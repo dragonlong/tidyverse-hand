@@ -102,6 +102,9 @@ class TeleopController:
         self.arm_ref_base_pose = None  # For optional secondary control of base
         self.gripper_ref_pos = None
 
+        self.global_time = time.time()
+        self.last_log_time = 0
+
     def process_message(self, data):
         if not self.targets_initialized:
             return
@@ -132,6 +135,11 @@ class TeleopController:
         if self.primary_device_id is not None and 'teleop_mode' in data:
             pos, rot = convert_webxr_pose(data['position'], data['orientation'])
 
+            # print out the data 
+            if time.time() - self.last_log_time > 1.0:
+                print(f"Raw data (1Hz): {data}")
+                self.last_log_time = time.time()
+                
             # Base movement
             if data['teleop_mode'] == 'base' or device_id == self.secondary_device_id:  # Note: Secondary device can only control base
                 # Store reference poses
@@ -207,6 +215,7 @@ class TeleopController:
             'arm_quat': arm_quat,
             'gripper_pos': self.gripper_target_pos.copy(),
         }
+        # print(time.time(), ': \n', action)
 
         return action
 
@@ -253,7 +262,7 @@ class TeleopPolicy(Policy):
         while True:
             if not self.web_server_queue.empty():
                 data = self.web_server_queue.get()
-
+                # print(f'...Listening\n {data}')
                 # Update state
                 if 'state_update' in data:
                     self.teleop_state = data['state_update']
@@ -351,9 +360,13 @@ if __name__ == '__main__':
         'wrist_image': np.zeros((640, 480, 3)),
     }
     policy = TeleopPolicy()
+    print('...Policy initialized')
     # policy = RemotePolicy()
     while True:
+        # breakpoint()
         policy.reset()
-        for _ in range(100):
-            print(policy.step(obs))
+        for _ in range(10000):
+            # print('Waiting')
+            # print(policy.step(obs))
+            policy.step(obs)
             time.sleep(POLICY_CONTROL_PERIOD)  # Note: Not precise

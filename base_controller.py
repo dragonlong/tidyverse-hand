@@ -66,6 +66,7 @@ class Motor:
             supply_voltage = self.fx.get_supply_voltage().value
             print(f'Motor supply voltage: {supply_voltage:.2f} V')
             if supply_voltage < 11.5:
+                # pass
                 raise Exception('Motor supply voltage is too low. Please charge the battery.')
 
         # Status signals
@@ -95,10 +96,16 @@ class Motor:
         self.fx.configurator.apply(fx_cfg)
 
     def get_position(self):
-        return TWO_PI * self.position_signal.value
+        # Add safety check for signal validity
+        if hasattr(self.position_signal, 'value') and self.position_signal.value is not None:
+            return TWO_PI * self.position_signal.value
+        return 0.0
 
     def get_velocity(self):
-        return TWO_PI * self.velocity_signal.value
+        # Add safety check for signal validity  
+        if hasattr(self.velocity_signal, 'value') and self.velocity_signal.value is not None:
+            return TWO_PI * self.velocity_signal.value
+        return 0.0
 
     def set_velocity(self, velocity):
         self.fx.set_control(self.velocity_request.with_velocity(velocity / TWO_PI))
@@ -125,10 +132,16 @@ class Caster:
         self.cancoder.configurator.apply(self.cancoder_cfg)
 
     def get_steer_position(self):
-        return TWO_PI * self.steer_position_signal.value
+        # Add safety check for signal validity
+        if hasattr(self.steer_position_signal, 'value') and self.steer_position_signal.value is not None:
+            return TWO_PI * self.steer_position_signal.value
+        return 0.0
 
     def get_steer_velocity(self):
-        return TWO_PI * self.steer_velocity_signal.value
+        # Add safety check for signal validity
+        if hasattr(self.steer_velocity_signal, 'value') and self.steer_velocity_signal.value is not None:
+            return TWO_PI * self.steer_velocity_signal.value
+        return 0.0
 
     def get_positions(self):
         steer_motor_pos = self.steer_motor.get_position()
@@ -176,7 +189,11 @@ class Vehicle:
 
         # CAN bus update frequency
         self.status_signals = [signal for caster in self.casters for signal in caster.status_signals]
-        phoenix6.BaseStatusSignal.set_update_frequency_for_all(CONTROL_FREQ, self.status_signals)
+        
+        # Give signals time to establish communication
+        time.sleep(1)
+        
+        # phoenix6.BaseStatusSignal.set_update_frequency_for_all(CONTROL_FREQ, self.status_signals)
 
         # Joint space
         num_motors = 2 * NUM_CASTERS

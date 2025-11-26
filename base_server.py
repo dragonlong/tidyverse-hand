@@ -34,9 +34,19 @@ class Base:
             time.sleep(0.01)
 
     def execute_action(self, action):
+        # Note: action['base_pose'] is a 3-element array [x, y, theta] representing the target pose of the base
+        # in the world frame (relative to the starting pose).
+        # x: forward/backward position in meters
+        # y: left/right position in meters
+        # theta: heading angle in radians
         self.vehicle.set_target_position(action['base_pose'])
 
     def get_state(self):
+        # Note: self.vehicle.x is a 3-element array [x, y, theta] representing the current estimated pose of the base
+        # in the world frame (relative to the starting pose).
+        # x: forward/backward position in meters
+        # y: left/right position in meters
+        # theta: heading angle in radians
         state = {'base_pose': self.vehicle.x}
         return state
 

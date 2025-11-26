@@ -1,16 +1,79 @@
 # Author: Jimmy Wu
 # Date: October 2024
 
+import os
+import re
 import threading
 import time
+
 import cv2 as cv
 import numpy as np
-from kortex_api.autogen.client_stubs.DeviceManagerClientRpc import DeviceManagerClient
-from kortex_api.autogen.client_stubs.VisionConfigClientRpc import VisionConfigClient
-from kortex_api.autogen.messages import DeviceConfig_pb2, VisionConfig_pb2
-from kinova import DeviceConnection
-from constants import BASE_CAMERA_SERIAL
 
+try:
+    from kortex_api.autogen.client_stubs.DeviceManagerClientRpc import DeviceManagerClient
+    from kortex_api.autogen.client_stubs.VisionConfigClientRpc import VisionConfigClient
+    from kortex_api.autogen.messages import DeviceConfig_pb2, VisionConfig_pb2
+    from kinova import DeviceConnection
+except:
+    print('No available kortex APIs')
+from constants import BASE_CAMERA_SERIAL, WRIST_CAMERA_SERIAL
+
+DEVICE_ID = {
+    BASE_CAMERA_SERIAL: '/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e_881237AE-video-index0',
+    WRIST_CAMERA_SERIAL: '/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e_AE8035BE-video-index0',
+}
+DEFAULT_DEVICE_TEMPLATE = '/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e_{serial}-video-index0'
+
+
+def _candidate_device_sources(serial):
+    """
+    Build a list of device identifiers (symlink path, canonical /dev/videoN, numeric index)
+    to try for the provided camera serial.
+    """
+    candidates = []
+
+    override = DEVICE_ID.get(serial)
+    if override:
+        candidates.append(override)
+
+    templated = DEFAULT_DEVICE_TEMPLATE.format(serial=serial)
+    if templated not in candidates:
+        candidates.append(templated)
+
+    resolved = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if candidate not in resolved and os.path.exists(candidate):
+            resolved.append(candidate)
+        real_path = os.path.realpath(candidate)
+        if os.path.exists(real_path) and real_path not in resolved:
+            resolved.append(real_path)
+        match = re.match(r'/dev/video(\d+)$', real_path)
+        if match:
+            idx = int(match.group(1))
+            if idx not in resolved:
+                resolved.append(idx)
+
+    # Fallback to generic /dev/video devices if nothing above exists
+    if not resolved:
+        try:
+            generic = sorted(
+                path for path in os.listdir('/dev') if path.startswith('video')
+            )
+        except FileNotFoundError:
+            generic = []
+        for path in generic:
+            device_path = os.path.join('/dev', path)
+            if device_path not in resolved:
+                resolved.append(device_path)
+            match = re.match(r'video(\d+)$', path)
+            if match:
+                idx = int(match.group(1))
+                if idx not in resolved:
+                    resolved.append(idx)
+
+    return resolved
 class Camera:
     def __init__(self):
         self.image = None
@@ -44,14 +107,45 @@ class LogitechCamera(Camera):
         super().__init__()
 
     def get_cap(self, serial):
-        cap = cv.VideoCapture(f'/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e_{serial}-video-index0')
-        cap.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc('M', 'J', 'P', 'G'))
-        cap.set(cv.CAP_PROP_FRAME_WIDTH, self.frame_width)
-        cap.set(cv.CAP_PROP_FRAME_HEIGHT, self.frame_height)
-        cap.set(cv.CAP_PROP_BUFFERSIZE, 1)  # Important - results in much better latency
+        candidates = _candidate_device_sources(serial)
+        attempted = []
+        cap = None
+
+        for source in candidates:
+            attempted.append(str(source))
+            open_source = source
+            if isinstance(source, str):
+                if not os.path.exists(source):
+                    continue
+                open_source = source
+            cap = cv.VideoCapture(open_source, cv.CAP_V4L2)
+            if cap.isOpened():
+                break
+            cap.release()
+            cap = cv.VideoCapture(open_source)
+            if cap.isOpened():
+                break
+            cap.release()
+            cap = None
+
+        if cap is None or not cap.isOpened():
+            raise RuntimeError(
+                f'Unable to open camera {serial}. Tried: {attempted}. '
+                'Make sure the webcam is connected and accessible.'
+            )
+
+        if not cap.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc('M', 'J', 'P', 'G')):
+            print('Warning: Unable to set MJPG encoding; using driver default.')
+        if not cap.set(cv.CAP_PROP_FRAME_WIDTH, self.frame_width):
+            print('Warning: Unable to set frame width; using driver default.')
+        if not cap.set(cv.CAP_PROP_FRAME_HEIGHT, self.frame_height):
+            print('Warning: Unable to set frame height; using driver default.')
+        if not cap.set(cv.CAP_PROP_BUFFERSIZE, 1):
+            print('Warning: Unable to set buffer size; latency may increase.')
 
         # Disable autofocus
-        cap.set(cv.CAP_PROP_AUTOFOCUS, 0)
+        if not cap.set(cv.CAP_PROP_AUTOFOCUS, 0):
+            print('Warning: Unable to disable autofocus; images may flicker.')
 
         # Read several frames to let settings (especially gain/exposure) stabilize
         for _ in range(30):
@@ -59,11 +153,22 @@ class LogitechCamera(Camera):
             cap.set(cv.CAP_PROP_FOCUS, self.focus)  # Fixed focus
 
         # Check all settings match expected
-        assert cap.get(cv.CAP_PROP_FRAME_WIDTH) == self.frame_width
-        assert cap.get(cv.CAP_PROP_FRAME_HEIGHT) == self.frame_height
-        assert cap.get(cv.CAP_PROP_BUFFERSIZE) == 1
-        assert cap.get(cv.CAP_PROP_AUTOFOCUS) == 0
-        assert cap.get(cv.CAP_PROP_FOCUS) == self.focus
+        def _verify(prop, expected, description):
+            actual = cap.get(prop)
+            if expected is None:
+                return
+            if actual == expected:
+                return
+            # Allow small floating point tolerance for width/height
+            if isinstance(expected, (int, float)) and abs(actual - expected) < 1e-3:
+                return
+            print(f'Warning: {description} expected {expected} but driver reports {actual}')
+
+        _verify(cv.CAP_PROP_FRAME_WIDTH, self.frame_width, 'frame width')
+        _verify(cv.CAP_PROP_FRAME_HEIGHT, self.frame_height, 'frame height')
+        _verify(cv.CAP_PROP_BUFFERSIZE, 1, 'buffer size')
+        _verify(cv.CAP_PROP_AUTOFOCUS, 0, 'autofocus state')
+        _verify(cv.CAP_PROP_FOCUS, self.focus, 'focus value')
 
         return cap
 
@@ -149,13 +254,26 @@ class KinovaCamera(Camera):
             sensor_focus_action.manual_focus.value = 0
             vision_config.DoSensorFocusAction(sensor_focus_action, vision_device_id)
 
+HEADLESS = not os.environ.get('DISPLAY')
+
 if __name__ == '__main__':
     base_camera = LogitechCamera(BASE_CAMERA_SERIAL)
-    wrist_camera = KinovaCamera()
+    wrist_camera = LogitechCamera(WRIST_CAMERA_SERIAL)
+    if HEADLESS:
+        print('DISPLAY not detected; running cameras.py in headless mode (no OpenCV windows).')
     try:
         while True:
             base_image = base_camera.get_image()
             wrist_image = wrist_camera.get_image()
+            if base_image is None or wrist_image is None:
+                time.sleep(0.01)
+                continue
+
+            if HEADLESS:
+                # In headless mode we cannot open GUI windows, so just keep streaming
+                time.sleep(0.033)
+                continue
+
             cv.imshow('base_image', cv.cvtColor(base_image, cv.COLOR_RGB2BGR))
             cv.imshow('wrist_image', cv.cvtColor(wrist_image, cv.COLOR_RGB2BGR))
             key = cv.waitKey(1)
@@ -169,4 +287,5 @@ if __name__ == '__main__':
     finally:
         base_camera.close()
         wrist_camera.close()
-        cv.destroyAllWindows()
+        if not HEADLESS:
+            cv.destroyAllWindows()

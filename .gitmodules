@@ -1,0 +1,9 @@
+[submodule "third_party/VITRA"]
+	path = third_party/VITRA
+	url = https://github.com/microsoft/VITRA.git
+[submodule "third_party/openpi"]
+	path = third_party/openpi
+	url = https://github.com/Physical-Intelligence/openpi.git
+[submodule "third_party/InternVLA-M1"]
+	path = third_party/InternVLA-M1
+	url = https://github.com/InternRobotics/InternVLA-M1.git

@@ -3,6 +3,8 @@
 
 import os
 import re
+import select
+import sys
 import threading
 import time
 
@@ -74,6 +76,34 @@ def _candidate_device_sources(serial):
                     resolved.append(idx)
 
     return resolved
+
+
+def _save_images(base_image, wrist_image):
+    """Persist the latest frames to disk."""
+    timestamp = int(time.time() * 1000) % 1000000000
+    base_image_path = f'base-image-{timestamp}.jpg'
+    wrist_image_path = f'wrist-image-{timestamp}.jpg'
+    cv.imwrite(base_image_path, cv.cvtColor(base_image, cv.COLOR_RGB2BGR))
+    cv.imwrite(wrist_image_path, cv.cvtColor(wrist_image, cv.COLOR_RGB2BGR))
+    print(f'Saved image pair to {base_image_path} and {wrist_image_path}')
+
+
+def _poll_headless_command():
+    """Check stdin for a command in headless mode without blocking."""
+    if not sys.stdin.isatty():
+        return None
+    try:
+        ready, _, _ = select.select([sys.stdin], [], [], 0)
+    except (OSError, ValueError):
+        return None
+    if not ready:
+        return None
+    try:
+        return sys.stdin.readline().strip().lower()
+    except Exception:
+        return None
+
+
 class Camera:
     def __init__(self):
         self.image = None
@@ -261,6 +291,7 @@ if __name__ == '__main__':
     wrist_camera = LogitechCamera(WRIST_CAMERA_SERIAL)
     if HEADLESS:
         print('DISPLAY not detected; running cameras.py in headless mode (no OpenCV windows).')
+        print("Type 's' + Enter to save images, 'q' + Enter to quit.")
     try:
         while True:
             base_image = base_camera.get_image()
@@ -270,7 +301,12 @@ if __name__ == '__main__':
                 continue
 
             if HEADLESS:
-                # In headless mode we cannot open GUI windows, so just keep streaming
+                # In headless mode poll stdin for save/quit commands
+                cmd = _poll_headless_command()
+                if cmd == 's':
+                    _save_images(base_image, wrist_image)
+                elif cmd == 'q':
+                    break
                 time.sleep(0.033)
                 continue
 
@@ -278,12 +314,9 @@ if __name__ == '__main__':
             cv.imshow('wrist_image', cv.cvtColor(wrist_image, cv.COLOR_RGB2BGR))
             key = cv.waitKey(1)
             if key == ord('s'):  # Save image
-                base_image_path = f'base-image-{int(10 * time.time()) % 100000000}.jpg'
-                cv.imwrite(base_image_path, cv.cvtColor(base_image, cv.COLOR_RGB2BGR))
-                print(f'Saved image to {base_image_path}')
-                wrist_image_path = f'wrist-image-{int(10 * time.time()) % 100000000}.jpg'
-                cv.imwrite(wrist_image_path, cv.cvtColor(wrist_image, cv.COLOR_RGB2BGR))
-                print(f'Saved image to {wrist_image_path}')
+                _save_images(base_image, wrist_image)
+            elif key == ord('q'):
+                break
     finally:
         base_camera.close()
         wrist_camera.close()

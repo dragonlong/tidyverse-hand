@@ -144,6 +144,7 @@ class TeleopController:
             if data['teleop_mode'] == 'base' or device_id == self.secondary_device_id:  # Note: Secondary device can only control base
                 # Store reference poses
                 if self.base_xr_ref_pos is None:
+                    print('...................Setting [BASE] reference poses again!!!...................')
                     self.base_ref_pose = self.base_pose.copy()
                     self.base_xr_ref_pos = pos[:2]
                     self.base_xr_ref_rot_inv = rot.inv()
@@ -160,6 +161,7 @@ class TeleopController:
             elif data['teleop_mode'] == 'arm':
                 # Store reference poses
                 if self.arm_xr_ref_pos is None:
+                    print('...................Setting [ARM] reference poses again!!!...................')
                     self.arm_xr_ref_pos = pos
                     self.arm_xr_ref_rot_inv = rot.inv()
                     self.arm_ref_pos = self.arm_target_pos.copy()
@@ -357,7 +359,7 @@ if __name__ == '__main__':
         'arm_quat': np.array([0.0, 0.0, 0.0, 1.0]),
         'gripper_pos': np.zeros(1),
         'base_image': np.zeros((640, 360, 3)),
-        'wrist_image': np.zeros((640, 480, 3)),
+        'wrist_image': np.zeros((640, 360, 3)),
     }
     policy = TeleopPolicy()
     print('...Policy initialized')

@@ -7,6 +7,26 @@ from itertools import count
 from constants import POLICY_CONTROL_PERIOD
 from episode_storage import EpisodeWriter
 from policies import TeleopPolicy, RemotePolicy
+import numpy as np
+
+REFERENCE_ARM_POS = [0.057, 0.0, 0.200]
+REFERENCE_ARM_QUAT = np.array([0.0, np.sqrt(0.5), 0.0, np.sqrt(0.5)])
+REFERENCE_GRIPPER_POS = [1.0]
+
+
+def move_arm_to_reference_pose(env):
+    """Drive the physical arm back to the neutral pose used by demo resets."""
+    arm = getattr(env, 'arm', None)
+    if arm is None or not hasattr(arm, 'execute_action'):
+        return
+    try:
+        arm.execute_action({
+            'arm_pos': REFERENCE_ARM_POS,
+            'arm_quat': REFERENCE_ARM_QUAT,
+            'gripper_pos': REFERENCE_GRIPPER_POS,
+        })
+    except Exception as exc:
+        print(f'Warning: Failed to move arm to reference pose: {exc}')
 
 def should_save_episode(writer):
     if len(writer) == 0:
@@ -27,6 +47,7 @@ def run_episode(env, policy, writer=None):
     # Reset the env
     print('Resetting env...')
     env.reset()
+    move_arm_to_reference_pose(env)
     print('Env has been reset')
 
     # Wait for user to press "Start episode"
@@ -73,6 +94,7 @@ def run_episode(env, policy, writer=None):
 
         # Ready for env reset
         elif action == 'reset_env':
+            move_arm_to_reference_pose(env)
             break
 
     if writer is not None:

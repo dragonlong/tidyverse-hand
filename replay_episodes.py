@@ -29,7 +29,7 @@ def replay_episode(env, episode_dir, show_images=False, execute_obs=False):
         if show_images:
             window_idx = 0
             for k, v in obs.items():
-                if v.ndim == 3:
+                if hasattr(v, 'ndim') and v.ndim == 3:
                     cv.imshow(k, cv.cvtColor(v, cv.COLOR_RGB2BGR))
                     cv.moveWindow(k, 640 * window_idx, 0)
                     window_idx += 1

@@ -11,15 +11,44 @@ import numpy as np
 from constants import POLICY_CONTROL_FREQ
 
 def write_frames_to_mp4(frames, mp4_path):
+    if not frames:
+        raise ValueError('No frames provided for video write')
+
+    mp4_path = Path(mp4_path)
     height, width, _ = frames[0].shape
-    fourcc = cv.VideoWriter_fourcc(*'avc1')
-    out = cv.VideoWriter(str(mp4_path), fourcc, POLICY_CONTROL_FREQ, (width, height))
-    for frame in frames:
-        bgr_frame = cv.cvtColor(frame, cv.COLOR_RGB2BGR)
-        out.write(bgr_frame)
-    out.release()
+    codecs = ['avc1', 'h264', 'mp4v', 'XVID', 'MJPG']
+    out = None
+
+    for codec in codecs:
+        fourcc = cv.VideoWriter_fourcc(*codec)
+        candidate = cv.VideoWriter(str(mp4_path), fourcc, POLICY_CONTROL_FREQ, (width, height))
+        if candidate.isOpened():
+            out = candidate
+            break
+        candidate.release()
+
+    if out is None:
+        npz_path = mp4_path.with_suffix('.npz')
+        np.savez_compressed(npz_path, frames=np.stack(frames, axis=0))
+        print(f'Warning: Unable to initialize VideoWriter; stored raw frames at {npz_path} instead.')
+        return
+
+    try:
+        for frame in frames:
+            bgr_frame = cv.cvtColor(frame, cv.COLOR_RGB2BGR)
+            out.write(bgr_frame)
+    finally:
+        out.release()
 
 def read_frames_from_mp4(mp4_path):
+    mp4_path = Path(mp4_path)
+    if not mp4_path.exists():
+        npz_path = mp4_path.with_suffix('.npz')
+        if npz_path.exists():
+            with np.load(npz_path) as data:
+                return [frame for frame in data['frames']]
+        raise FileNotFoundError(f'Could not find {mp4_path} or fallback {npz_path}')
+
     cap = cv.VideoCapture(str(mp4_path))
     frames = []
     while True:
@@ -64,7 +93,7 @@ class EpisodeWriter:
         frames_dict = {}
         for obs in self.observations:
             for k, v in obs.items():
-                if v.ndim == 3:
+                if isinstance(v, np.ndarray) and v.ndim == 3:
                     if k not in frames_dict:
                         frames_dict[k] = []
                     frames_dict[k].append(v)

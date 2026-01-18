@@ -1,9 +1,11 @@
 #!/bin/bash
-# Convert a single rosbag to LeRobot format (lighter weight)
+# LIGHTWEIGHT: Convert a single rosbag to LeRobot format WITHOUT video
+# Use this on low-memory systems (< 16GB RAM)
 #
-# Usage: ./04_convert_single_bag.sh /path/to/rosbag_folder /path/to/output [repo_id]
+# Usage: ./04_convert_single_bag_lite.sh /path/to/rosbag_folder /path/to/output [repo_id]
 #
-# This script processes one bag at a time to reduce memory/CPU load
+# This skips video encoding which is the main memory hog.
+# You can add video later on a more powerful machine.
 
 set -e
 
@@ -19,8 +21,10 @@ source install/setup.bash
 if [ -z "$1" ] || [ -z "$2" ]; then
     echo "Usage: $0 /path/to/rosbag_folder /path/to/output [repo_id]"
     echo ""
+    echo "LIGHTWEIGHT version - no video encoding (saves memory)"
+    echo ""
     echo "Example:"
-    echo "  $0 ~/tetheria/tidyverse-hand/data/rosbag2_2026_01_16-17_09_38 ~/tetheria/tidyverse-hand/data/lerobot_format/ep1"
+    echo "  $0 ~/tetheria/tidyverse-hand/data/rosbag2_xxx ~/tetheria/tidyverse-hand/data/lerobot_format/ep1"
     exit 1
 fi
 
@@ -28,13 +32,14 @@ INPUT_BAG="$1"
 OUTPUT_DIR="$2"
 REPO_ID="${3:-local/hand_teleop}"
 
-echo "Converting single rosbag to LeRobot format"
+echo "Converting rosbag to LeRobot format (LITE - no video)"
 echo "  Input: $INPUT_BAG"
 echo "  Output: $OUTPUT_DIR"
 echo "  Repo ID: $REPO_ID"
 echo ""
 
-# Run with nice to lower priority and avoid overwhelming the system
+# Run with nice to lower priority
+# NO --use-video flag = skip video encoding
 nice -n 10 python3 ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_lerobot.py \
     --input-dir "$INPUT_BAG" \
     --output-root "$OUTPUT_DIR" \
@@ -42,15 +47,11 @@ nice -n 10 python3 ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_lerobot.py 
     --robot-type "aero_hand" \
     --fps 30 \
     --task "hand teleop demonstration" \
-    --use-video \
-    --image-h 480 \
-    --image-w 640 \
     --topic-cmd-vel "/spacemouse/cmd_vel" \
     --topic-joint-states "/joint_states" \
     --topic-hand-control "/right/joint_control" \
     --topic-actuator-states "/right/actuator_states" \
     --topic-manus "/manus_glove_0" \
-    --camera-head "/camera_0/color" \
     --arm-joint-dim 7 \
     --hand-joint-dim 16 \
     --num-actuators 7 \
@@ -62,3 +63,6 @@ nice -n 10 python3 ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_lerobot.py 
 
 echo ""
 echo "Done! Dataset saved to: $OUTPUT_DIR"
+echo ""
+echo "NOTE: Video was skipped. To add video later on a powerful machine:"
+echo "  - Re-run with --use-video --camera-head /camera_0/color"

@@ -39,8 +39,8 @@ if [ -z "$1" ] || [ -z "$2" ]; then
     echo "  sum     - Sum all delta commands in frame interval"
     echo ""
     echo "Example:"
-    echo "  $0 ~/tetheria/aero-open-ros2 ~/data/hand_teleop_dataset"
-    echo "  $0 ~/tetheria/aero-open-ros2 ~/data/hand_teleop_dataset local/teleop average"
+    echo "  $0 ~/tetheria/tidyverse-hand/data ~/tetheria/tidyverse-hand/data/lerobot_format/combined"
+    echo "  $0 ~/tetheria/tidyverse-hand/data/rosbag_ep1 ~/tetheria/tidyverse-hand/data/lerobot_format/ep1 local/ep1"
     exit 1
 fi
 
@@ -56,7 +56,7 @@ echo "  Repo ID: $REPO_ID"
 echo "  Sync mode: $SYNC_MODE"
 echo ""
 
-python ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_lerobot.py \
+python3 ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_lerobot.py \
     --input-dir "$INPUT_DIR" \
     --output-root "$OUTPUT_DIR" \
     --repo-id "$REPO_ID" \

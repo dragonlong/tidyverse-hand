@@ -79,7 +79,7 @@ ros2 bag record -s mcap /topic1 /topic2
 mamba activate tidybot2
 
 # Convert single bag
-python ~/tetheria/tidyverse-hand/tools/convert_db3_to_mcap.py \
+python3 ~/tetheria/tidyverse-hand/tools/convert_db3_to_mcap.py \
     --input /path/to/rosbag_folder \
     --output /path/to/output.mcap
 ```
@@ -99,7 +99,7 @@ cd ~/tetheria/aero-open-ros2
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 
-python ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_lerobot.py \
+python3 ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_lerobot.py \
     --input-dir /path/to/rosbag_folder_or_mcap \
     --output-root ~/data/lerobot_dataset \
     --repo-id "local/my_dataset" \

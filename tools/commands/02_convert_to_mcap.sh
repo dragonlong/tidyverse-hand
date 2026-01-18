@@ -36,7 +36,7 @@ echo "Converting: $INPUT_PATH -> $OUTPUT_PATH"
 # ros2 bag convert -i "$INPUT_PATH" -o "${OUTPUT_PATH%.*}" -s mcap
 
 # Method 2: Using Python script
-python ~/tetheria/tidyverse-hand/tools/convert_db3_to_mcap.py \
+python3 ~/tetheria/tidyverse-hand/tools/convert_db3_to_mcap.py \
     --input "$INPUT_PATH" \
     --output "$OUTPUT_PATH" \
     --overwrite

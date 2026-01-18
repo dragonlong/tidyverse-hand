@@ -20,13 +20,17 @@
 #   └─data/chunk-000/
 #     └─episode_XXXXXX.parquet
 
-set -e
+# Don't use set -e as it can cause silent failures with conda
+
+echo "=== Starting GR00T LeRobot conversion ==="
 
 # Activate tidybot2 conda environment
-source ~/miniforge3/etc/profile.d/conda.sh 2>/dev/null || source ~/mambaforge/etc/profile.d/conda.sh 2>/dev/null || source ~/miniconda3/etc/profile.d/conda.sh 2>/dev/null
-mamba activate tidybot2 || conda activate tidybot2
+echo "Activating tidybot2 environment..."
+source ~/miniforge3/etc/profile.d/conda.sh 2>/dev/null || source ~/mambaforge/etc/profile.d/conda.sh 2>/dev/null || source ~/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
+mamba activate tidybot2 2>/dev/null || conda activate tidybot2 2>/dev/null || echo "Warning: Could not activate tidybot2"
 
 # Source ROS2 workspace for custom messages
+echo "Sourcing ROS2 workspace..."
 cd ~/tetheria/aero-open-ros2
 source /opt/ros/humble/setup.bash
 source install/setup.bash

@@ -60,7 +60,7 @@ echo "  Repo ID: $REPO_ID"
 echo "  Episode segmentation: $EPISODE_SEG"
 echo ""
 
-nice -n 10 python3 ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_groot_lerobot.py \
+python3 ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_groot_lerobot.py \
     --input-dir "$INPUT_BAG" \
     --output-root "$OUTPUT_DIR" \
     --repo-id "$REPO_ID" \
@@ -76,15 +76,9 @@ nice -n 10 python3 ~/tetheria/tidyverse-hand/tools/convert_rosbag_to_groot_lerob
     --topic-actuator-states "/right/actuator_states" \
     --topic-manus "/manus_glove_0" \
     --camera-head "/camera_0/color" \
-    --arm-joint-dim 7 \
-    --hand-joint-dim 16 \
-    --num-actuators 7 \
-    --manus-dim 20 \
     --episode-segmentation "$EPISODE_SEG" \
-    --episode-gap-threshold 2.0 \
-    --episode-min-duration 3.0 \
     --overwrite \
-    --debug-topics
+    --debug-topics 2>&1
 
 echo ""
 echo "Done! GR00T LeRobot v2 dataset saved to: $OUTPUT_DIR"

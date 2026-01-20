@@ -18,7 +18,7 @@ Output structure:
       └─episode_XXXXXX.parquet
 
 Usage:
-    mamba activate tidybot2
+    # mamba activate tidybot2 (not needed here)
     cd ~/tetheria/aero-open-ros2
     source /opt/ros/humble/setup.bash
     source install/setup.bash

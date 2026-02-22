@@ -756,23 +756,28 @@ def convert_rosbags_to_groot_lerobot(
     episode_segmentation: str = "none",
     episode_gap_threshold: float = 2.0,
     episode_min_duration: float = 3.0,
+    # Append mode for incremental processing
+    append: bool = False,
+    episode_start_index: int = 0,
+    frame_start_index: int = 0,
 ) -> Path:
     """Convert rosbag recordings to GR00T LeRobot v2 format."""
     
+    # Handle output directory
     if output_root.exists():
-        if overwrite:
+        if overwrite and not append:
             shutil.rmtree(output_root)
-        else:
-            raise FileExistsError(f"Output exists: {output_root} (use --overwrite)")
+        elif not append:
+            raise FileExistsError(f"Output exists: {output_root} (use --overwrite or --append)")
     
-    # Create directory structure
+    # Create directory structure (safe for append mode)
     output_root.mkdir(parents=True, exist_ok=True)
-    (output_root / "meta").mkdir()
-    (output_root / "data" / "chunk-000").mkdir(parents=True)
+    (output_root / "meta").mkdir(exist_ok=True)
+    (output_root / "data" / "chunk-000").mkdir(parents=True, exist_ok=True)
     if use_video:
-        (output_root / "videos" / "chunk-000").mkdir(parents=True)
+        (output_root / "videos" / "chunk-000").mkdir(parents=True, exist_ok=True)
         for cam_name in camera_topics:
-            (output_root / "videos" / "chunk-000" / f"observation.images.{cam_name}").mkdir()
+            (output_root / "videos" / "chunk-000" / f"observation.images.{cam_name}").mkdir(exist_ok=True)
     
     # Calculate dimensions
     state_dim = arm_joint_dim + num_actuators + manus_dim  # 34
@@ -838,8 +843,31 @@ def convert_rosbags_to_groot_lerobot(
         {"task_index": 1, "task": "valid"},
     ]
     
-    global_index = 0
-    episode_index = 0
+    # Determine starting indices
+    if append:
+        # Auto-detect next episode index from existing parquet files
+        data_dir = output_root / "data" / "chunk-000"
+        existing_episodes = sorted(data_dir.glob("episode_*.parquet"))
+        if existing_episodes:
+            # Extract the highest episode index and add 1
+            last_episode = existing_episodes[-1].stem  # e.g., "episode_000005"
+            episode_index = int(last_episode.split("_")[1]) + 1
+        else:
+            episode_index = episode_start_index
+        
+        # Auto-detect next frame index from info.json
+        info_path = output_root / "meta" / "info.json"
+        if info_path.exists():
+            with open(info_path) as f:
+                info_data = json.load(f)
+                global_index = info_data.get("total_frames", frame_start_index)
+        else:
+            global_index = frame_start_index
+        
+        print(f"  Append mode: starting at episode {episode_index}, frame {global_index}")
+    else:
+        global_index = 0
+        episode_index = 0
     
     for bag_idx, bag_path in enumerate(bags):
         print(f"\n[Bag {bag_idx+1}/{len(bags)}] {bag_path.name}")
@@ -946,25 +974,35 @@ def convert_rosbags_to_groot_lerobot(
     # Write meta files
     print("\nWriting meta files...")
     
-    # episodes.jsonl
-    with open(output_root / "meta" / "episodes.jsonl", "w") as f:
-        for ep in episodes_info:
-            f.write(json.dumps(ep) + "\n")
+    # episodes.jsonl - append mode adds to existing
+    episodes_jsonl_path = output_root / "meta" / "episodes.jsonl"
+    if append and episodes_jsonl_path.exists():
+        with open(episodes_jsonl_path, "a") as f:
+            for ep in episodes_info:
+                f.write(json.dumps(ep) + "\n")
+    else:
+        with open(episodes_jsonl_path, "w") as f:
+            for ep in episodes_info:
+                f.write(json.dumps(ep) + "\n")
     
-    # tasks.jsonl
-    with open(output_root / "meta" / "tasks.jsonl", "w") as f:
-        for task_info in tasks_info:
-            f.write(json.dumps(task_info) + "\n")
+    # tasks.jsonl - only write if not appending (same tasks)
+    tasks_jsonl_path = output_root / "meta" / "tasks.jsonl"
+    if not append or not tasks_jsonl_path.exists():
+        with open(tasks_jsonl_path, "w") as f:
+            for task_info in tasks_info:
+                f.write(json.dumps(task_info) + "\n")
     
-    # modality.json
-    modality = create_modality_json(
-        arm_joint_dim, hand_joint_dim, num_actuators, manus_dim,
-        list(camera_topics.keys()) if use_video else []
-    )
-    with open(output_root / "meta" / "modality.json", "w") as f:
-        json.dump(modality, f, indent=2)
+    # modality.json - only write if not appending (same structure)
+    modality_path = output_root / "meta" / "modality.json"
+    if not append or not modality_path.exists():
+        modality = create_modality_json(
+            arm_joint_dim, hand_joint_dim, num_actuators, manus_dim,
+            list(camera_topics.keys()) if use_video else []
+        )
+        with open(modality_path, "w") as f:
+            json.dump(modality, f, indent=2)
     
-    # info.json
+    # info.json - always update with latest totals
     info = create_info_json(
         repo_id=repo_id,
         fps=fps,
@@ -1030,7 +1068,14 @@ def main():
     parser.add_argument("--episode-min-duration", type=float, default=3.0,
                        help="Minimum episode duration (seconds)")
     
-    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--overwrite", action="store_true",
+                       help="Overwrite existing output directory")
+    parser.add_argument("--append", action="store_true",
+                       help="Append to existing dataset (for incremental processing)")
+    parser.add_argument("--episode-start-index", type=int, default=0,
+                       help="Starting episode index (for append mode)")
+    parser.add_argument("--frame-start-index", type=int, default=0,
+                       help="Starting frame index (for append mode)")
     parser.add_argument("--debug-topics", action="store_true")
     
     args = parser.parse_args()
@@ -1069,6 +1114,9 @@ def main():
         episode_segmentation=args.episode_segmentation,
         episode_gap_threshold=args.episode_gap_threshold,
         episode_min_duration=args.episode_min_duration,
+        append=args.append,
+        episode_start_index=args.episode_start_index,
+        frame_start_index=args.frame_start_index,
     )
 
 

@@ -467,6 +467,14 @@ def main():
                     freq = info.count / dur
                     freq_str = f" ({freq:.1f} Hz)"
             print(f"  {info.count:>6} msgs  {name:<40} {info.msgtype}{freq_str}")
+
+        # Hint for conversion: which topics to use for arm/hand
+        print("\nTopics used by 02_batch_convert (set TOPIC_* in script if your names differ):")
+        print("  Arm (JointState):        /joint_states  or  /right/gello_js")
+        print("  Hand target (JointControl):   /right/joint_control")
+        print("  Hand state (ActuatorStates):  /right/actuator_states")
+        print("  Base/teleop (Twist):     /spacemouse/cmd_vel")
+        print("  Glove (ManusGlove):      /manus_glove_0")
     
     # Sample messages from topic
     if args.topic:

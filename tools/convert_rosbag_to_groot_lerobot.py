@@ -5,24 +5,56 @@ Convert ROS2 rosbag to GR00T LeRobot v2 format.
 This script converts rosbag recordings to the LeRobot v2 format required for
 fine-tuning GR00T N1 models.
 
+Channel Layout
+==============
+
+observation.state  (34-dim)
+-----------------------------------------------------------------------
+Index  | Dim | Name                      | Source
+-------|-----|---------------------------|-------------------------------
+ 0–6   |  7  | arm_joint_positions       | /joint_states  (joint1..joint7)
+       |     |                           |   sensor_msgs/JointState
+ 7–13  |  7  | hand_actuator_positions   | /right/actuator_states
+       |     |                           |   aero_hand_open_msgs/ActuatorStates
+14–33  | 20  | manus_glove_ergonomics    | /manus_glove_0
+       |     |                           |   manus_ros2_msgs/ManusGlove
+
+action  (26-dim)
+-----------------------------------------------------------------------
+Index  | Dim | Name                      | Source
+-------|-----|---------------------------|-------------------------------
+ 0–2   |  3  | base_velocity (vx,vy,wz)  | /spacemouse/cmd_vel
+       |     |                           |   geometry_msgs/Twist
+ 3–9   |  7  | arm_joint_targets         | /joint_states  (joint1..joint7)
+       |     |                           |   sensor_msgs/JointState
+10–25  | 16  | hand_joint_targets        | /right/joint_control
+       |     |                           |   aero_hand_open_msgs/JointControl
+
+observation.images  (3 cameras, 480×640×3 RGB)
+-----------------------------------------------------------------------
+Key                          | Source Topic
+-----------------------------|------------------------------------------
+observation.images.head      | /camera_0/color
+observation.images.wrist     | /camera_4/color
+observation.images.base      | /logitech_base/color
+
 Output structure:
     ├─meta/
     │ ├─episodes.jsonl
     │ ├─modality.json    (GR00T specific)
     │ ├─info.json
     │ └─tasks.jsonl
-    ├─videos/chunk-000/
+    ├─videos/chunk-{chunk}/
     │ └─observation.images.<view_name>/
-    │   └─episode_XXXXXX.mp4
-    └─data/chunk-000/
-      └─episode_XXXXXX.parquet
+    │   └─episode_{index}.mp4
+    └─data/chunk-{chunk}/
+      └─episode_{index}.parquet
 
 Usage:
-    # mamba activate tidybot2 (not needed here)
     cd ~/tetheria/aero-open-ros2
     source /opt/ros/humble/setup.bash
     source install/setup.bash
-    
+
     python3 convert_rosbag_to_groot_lerobot.py \\
         --input-dir ~/tetheria/tidyverse-hand/data/rosbag2_xxx \\
         --output-root ~/tetheria/tidyverse-hand/data/lerobot_v2/dataset_name \\
@@ -187,6 +219,39 @@ def extract_joint_state(msg: Any, num_joints: int = 7) -> np.ndarray:
         pos = np.asarray(msg.position, dtype=np.float32).flatten()
         n = min(len(pos), num_joints)
         result[:n] = pos[:n]
+    except Exception:
+        pass
+    return result
+
+
+def extract_joint_state_by_names(
+    msg: Any,
+    joint_names: Sequence[str],
+    num_joints: int,
+) -> np.ndarray:
+    """Extract joint positions by name from a JointState message.
+    Fills result in the order of joint_names; uses 0 for missing names.
+    """
+    result = np.zeros(num_joints, dtype=np.float32)
+    if msg is None or not joint_names:
+        return result
+    try:
+        if not hasattr(msg, "name") or not hasattr(msg, "position"):
+            # Fallback: use first num_joints positions
+            pos = np.asarray(msg.position, dtype=np.float32).flatten()
+            n = min(len(pos), num_joints)
+            result[:n] = pos[:n]
+            return result
+        names = list(msg.name) if hasattr(msg.name, "__iter__") and not isinstance(msg.name, str) else []
+        pos = np.asarray(msg.position, dtype=np.float32).flatten()
+        name_to_pos = {}
+        for idx in range(min(len(names), len(pos))):
+            name_to_pos[names[idx]] = float(pos[idx])
+        for i, name in enumerate(joint_names):
+            if i >= num_joints:
+                break
+            if name in name_to_pos:
+                result[i] = float(name_to_pos[name])
     except Exception:
         pass
     return result
@@ -518,9 +583,14 @@ def build_frames_for_episode(
         cmd_msg = latest_before(collected.get(topic_cmd, []), float(ti))
         vx, vy, vz, wx, wy, wz = extract_twist(cmd_msg)
         
-        topic_arm = config.get("topic_joint_states", "/joint_states")
+        # Arm: use dedicated topic if set, else joint_states
+        topic_arm = config.get("topic_arm_joint_states") or config.get("topic_joint_states", "/joint_states")
         arm_msg = latest_before(collected.get(topic_arm, []), float(ti))
-        arm_joints = extract_joint_state(arm_msg, arm_joint_dim)
+        arm_joint_names = config.get("arm_joint_names")
+        if arm_joint_names:
+            arm_joints = extract_joint_state_by_names(arm_msg, arm_joint_names, arm_joint_dim)
+        else:
+            arm_joints = extract_joint_state(arm_msg, arm_joint_dim)
         
         topic_hand_ctrl = config.get("topic_hand_control", "/right/joint_control")
         hand_ctrl_msg = latest_before(collected.get(topic_hand_ctrl, []), float(ti))
@@ -534,18 +604,18 @@ def build_frames_for_episode(
         manus_msg = latest_before(collected.get(topic_manus, []), float(ti))
         manus_ergo = extract_manus_ergonomics(manus_msg, manus_dim)
         
-        # Build state: [arm_joints(7), hand_actuations(7), manus_ergo(20)] = 34
+        # state[34] = arm_joint_positions[7] | hand_actuator_positions[7] | manus_ergonomics[20]
         state = np.concatenate([
-            arm_joints,
-            actuations,
-            manus_ergo,
+            arm_joints,       # [0:7]  arm joint positions  (joint1..joint7)
+            actuations,       # [7:14] hand actuator positions
+            manus_ergo,       # [14:34] manus glove ergonomics
         ], axis=0).astype(np.float32)
         
-        # Build action: [base_cmd(3), arm_joints(7), hand_target(16)] = 26
+        # action[26] = base_velocity[3] | arm_joint_targets[7] | hand_joint_targets[16]
         action = np.concatenate([
-            np.array([vx, vy, wz], dtype=np.float32),
-            arm_joints,
-            hand_target,
+            np.array([vx, vy, wz], dtype=np.float32),  # [0:3]  base velocity (vx, vy, wz)
+            arm_joints,       # [3:10]  arm joint targets  (joint1..joint7)
+            hand_target,      # [10:26] hand joint targets (16 finger DOFs)
         ], axis=0).astype(np.float32)
         
         data_frames.append({
@@ -644,31 +714,40 @@ def create_modality_json(
     manus_dim: int,
     camera_names: List[str],
 ) -> Dict[str, Any]:
-    """Create the modality.json configuration for GR00T."""
-    
-    # State fields: [arm_joints(7), hand_actuations(7), manus_ergo(20)] = 34
+    """Create the modality.json configuration for GR00T.
+
+    State  [0:arm, arm:arm+act, arm+act:arm+act+manus] -> 34 total
+    Action [0:3, 3:3+arm, 3+arm:3+arm+hand]           -> 26 total
+    """
+    # --- observation.state  (34-dim) ---
+    #  [0:7]   arm_joint_positions      joint1..joint7 from /joint_states
+    #  [7:14]  hand_actuator_positions  from /right/actuator_states
+    #  [14:34] manus_glove_ergonomics   from /manus_glove_0
     state_idx = 0
     state_fields = {}
-    
+
     state_fields["arm_joint_positions"] = {"start": state_idx, "end": state_idx + arm_joint_dim}
     state_idx += arm_joint_dim
-    
+
     state_fields["hand_actuator_positions"] = {"start": state_idx, "end": state_idx + num_actuators}
     state_idx += num_actuators
-    
+
     state_fields["manus_glove_ergonomics"] = {"start": state_idx, "end": state_idx + manus_dim}
     state_idx += manus_dim
-    
-    # Action fields: [base_cmd(3), arm_joints(7), hand_target(16)] = 26
+
+    # --- action  (26-dim) ---
+    #  [0:3]   base_velocity           vx, vy, wz from /spacemouse/cmd_vel
+    #  [3:10]  arm_joint_targets       joint1..joint7 from /joint_states
+    #  [10:26] hand_joint_targets      16 finger DOFs from /right/joint_control
     action_idx = 0
     action_fields = {}
-    
+
     action_fields["base_velocity"] = {"start": action_idx, "end": action_idx + 3}
     action_idx += 3
-    
+
     action_fields["arm_joint_targets"] = {"start": action_idx, "end": action_idx + arm_joint_dim}
     action_idx += arm_joint_dim
-    
+
     action_fields["hand_joint_targets"] = {"start": action_idx, "end": action_idx + hand_joint_dim}
     action_idx += hand_joint_dim
     
@@ -701,26 +780,43 @@ def create_info_json(
     state_dim: int,
     action_dim: int,
     robot_type: str,
+    camera_names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Create the info.json metadata."""
+    features: Dict[str, Any] = {
+        "observation.state": {
+            "dtype": "float32",
+            "shape": [state_dim],
+        },
+        "action": {
+            "dtype": "float32",
+            "shape": [action_dim],
+        },
+    }
+    if camera_names:
+        for cam in camera_names:
+            features[f"observation.images.{cam}"] = {
+                "dtype": "video",
+                "shape": [480, 640, 3],
+                "names": ["height", "width", "channels"],
+                "info": {
+                    "video.fps": fps,
+                    "video.codec": "av1",
+                    "video.pix_fmt": "yuv420p",
+                    "video.is_depth_map": False,
+                    "has_audio": False,
+                },
+            }
     return {
         "codebase_version": "v2.0",
         "robot_type": robot_type,
         "fps": fps,
         "total_episodes": total_episodes,
         "total_frames": total_frames,
-        "data_path": "data/chunk-000",
-        "video_path": "videos/chunk-000",
-        "features": {
-            "observation.state": {
-                "dtype": "float32",
-                "shape": [state_dim],
-            },
-            "action": {
-                "dtype": "float32",
-                "shape": [action_dim],
-            },
-        },
+        "total_videos": total_episodes * (len(camera_names) if camera_names else 0),
+        "data_path": "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet",
+        "video_path": "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4",
+        "features": features,
         "repo_id": repo_id,
     }
 
@@ -752,6 +848,9 @@ def convert_rosbags_to_groot_lerobot(
     hand_joint_dim: int,
     num_actuators: int,
     manus_dim: int,
+    # Optional (arm extraction)
+    topic_arm_joint_states: Optional[str] = None,
+    arm_joint_names: Optional[Sequence[str]] = None,
     # Episode segmentation
     episode_segmentation: str = "none",
     episode_gap_threshold: float = 2.0,
@@ -787,7 +886,14 @@ def convert_rosbags_to_groot_lerobot(
     print(f"  State dim: {state_dim} = arm({arm_joint_dim}) + actuators({num_actuators}) + manus({manus_dim})")
     print(f"  Action dim: {action_dim} = base_cmd(3) + arm({arm_joint_dim}) + hand({hand_joint_dim})")
     print(f"  Cameras: {list(camera_topics.keys()) if camera_topics else 'none'}")
-    
+    if arm_joint_names:
+        print(f"  Arm joint names: {list(arm_joint_names)} (name-based extraction)")
+    if topic_arm_joint_states and topic_arm_joint_states != topic_joint_states:
+        print(f"  Arm joint states topic: {topic_arm_joint_states}")
+
+    # Topic for arm joint states (may differ from joint_states, e.g. /right/gello_js)
+    topic_arm_joint_states = topic_arm_joint_states or topic_joint_states
+
     # Topics to read
     topics = [
         topic_cmd_vel,
@@ -796,9 +902,11 @@ def convert_rosbags_to_groot_lerobot(
         topic_actuator_states,
         topic_manus,
     ]
+    if topic_arm_joint_states and topic_arm_joint_states not in topics:
+        topics.append(topic_arm_joint_states)
     if use_video and camera_topics:
         topics.extend(camera_topics.values())
-    
+
     # Config for frame building
     config = {
         "use_video": use_video,
@@ -806,10 +914,12 @@ def convert_rosbags_to_groot_lerobot(
         "image_hw": image_hw,
         "topic_cmd_vel": topic_cmd_vel,
         "topic_joint_states": topic_joint_states,
+        "topic_arm_joint_states": topic_arm_joint_states,
         "topic_hand_control": topic_hand_control,
         "topic_actuator_states": topic_actuator_states,
         "topic_manus": topic_manus,
         "arm_joint_dim": arm_joint_dim,
+        "arm_joint_names": arm_joint_names,
         "hand_joint_dim": hand_joint_dim,
         "num_actuators": num_actuators,
         "manus_dim": manus_dim,
@@ -1011,6 +1121,7 @@ def convert_rosbags_to_groot_lerobot(
         state_dim=state_dim,
         action_dim=action_dim,
         robot_type=robot_type,
+        camera_names=list(camera_topics.keys()) if use_video and camera_topics else None,
     )
     with open(output_root / "meta" / "info.json", "w") as f:
         json.dump(info, f, indent=2)
@@ -1044,9 +1155,14 @@ def main():
     
     parser.add_argument("--topic-cmd-vel", type=str, default="/spacemouse/cmd_vel")
     parser.add_argument("--topic-joint-states", type=str, default="/joint_states")
+    parser.add_argument("--topic-arm-joint-states", type=str, default=None,
+                        help="Topic for arm joint states (default: same as --topic-joint-states). Use e.g. /right/gello_js if arm is published there.")
     parser.add_argument("--topic-hand-control", type=str, default="/right/joint_control")
     parser.add_argument("--topic-actuator-states", type=str, default="/right/actuator_states")
     parser.add_argument("--topic-manus", type=str, default="/manus_glove_0")
+    
+    parser.add_argument("--arm-joint-names", type=str, default=None,
+                        help="Comma-separated arm joint names for name-based extraction from JointState (e.g. joint1,joint2,...,joint6). If not set, uses first N positions.")
     
     parser.add_argument("--camera-head", type=str, default="/camera_0/color")
     parser.add_argument("--camera-wrist", type=str, default=None)
@@ -1090,6 +1206,13 @@ def main():
         if args.camera_base:
             camera_topics["base"] = args.camera_base
     
+    # Default arm joint names for aero_hand (gello publishes joint1..joint6; we use 7 slots)
+    arm_joint_names_list = None
+    if getattr(args, "arm_joint_names", None):
+        arm_joint_names_list = [s.strip() for s in args.arm_joint_names.split(",") if s.strip()]
+    elif args.robot_type == "aero_hand":
+        arm_joint_names_list = [f"joint{i+1}" for i in range(7)]  # joint1..joint7
+
     convert_rosbags_to_groot_lerobot(
         input_dir=args.input_dir,
         output_root=args.output_root,
@@ -1107,8 +1230,10 @@ def main():
         topic_actuator_states=args.topic_actuator_states,
         topic_manus=args.topic_manus,
         camera_topics=camera_topics,
+        topic_arm_joint_states=args.topic_arm_joint_states,
         arm_joint_dim=args.arm_joint_dim,
         hand_joint_dim=args.hand_joint_dim,
+        arm_joint_names=arm_joint_names_list,
         num_actuators=args.num_actuators,
         manus_dim=args.manus_dim,
         episode_segmentation=args.episode_segmentation,

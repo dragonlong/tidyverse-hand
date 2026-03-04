@@ -5,10 +5,50 @@
 # Data source: /mnt/sandisk/data/tidyverse-hand-2026-01-19/
 # Output: /mnt/sandisk/data/lerobot_v2/tidyverse_hand_2026_01_18/
 #
-# Camera configuration (verified via ros2 bag info):
-#   - Head camera:  /camera_0/color
-#   - Wrist camera: /camera_4/color
-#   - Base camera:  /logitech_base/color
+# Before first run: inspect one bag to confirm topic names:
+#   ./01_inspect_rosbag.sh /mnt/sandisk/data/tidyverse-hand-2026-01-19/rosbag2_2026_01_18-12_07_40
+# Then set TOPIC_* and ARM_JOINT_STATES_TOPIC in the Configuration section
+# if your bags differ.
+#
+# ============================================================================
+# Channel Layout (observation.state = 34-dim, action = 26-dim)
+# ============================================================================
+#
+# observation.state [34]
+# -----------------------------------------------------------------------
+#  Index  | Dim | Name                       | Source Topic / Msg Type
+# --------|-----|----------------------------|----------------------------
+#   0– 6  |  7  | arm_joint_positions        | /joint_states
+#         |     |   (joint1 .. joint7)       |   sensor_msgs/JointState
+#   7–13  |  7  | hand_actuator_positions    | /right/actuator_states
+#         |     |                            |   aero_hand_open_msgs/ActuatorStates
+#  14–33  | 20  | manus_glove_ergonomics     | /manus_glove_0
+#         |     |                            |   manus_ros2_msgs/ManusGlove
+#
+# action [26]
+# -----------------------------------------------------------------------
+#  Index  | Dim | Name                       | Source Topic / Msg Type
+# --------|-----|----------------------------|----------------------------
+#   0– 2  |  3  | base_velocity (vx,vy,wz)   | /spacemouse/cmd_vel
+#         |     |                            |   geometry_msgs/Twist
+#   3– 9  |  7  | arm_joint_targets          | /joint_states
+#         |     |   (joint1 .. joint7)       |   sensor_msgs/JointState
+#  10–25  | 16  | hand_joint_targets         | /right/joint_control
+#         |     |   (16 finger DOFs)         |   aero_hand_open_msgs/JointControl
+#
+# observation.images (3 cameras, 480×640×3 RGB)
+# -----------------------------------------------------------------------
+#  Key                          | Source Topic
+# ------------------------------|-------------------------------------------
+#  observation.images.head      | /camera_0/color
+#  observation.images.wrist     | /camera_4/color
+#  observation.images.base      | /logitech_base/color
+#
+# ============================================================================
+#
+# Arm joint states: by default uses /joint_states with name-based extraction
+# (joint1..joint7). If your recording has arm on a separate topic (e.g. gello
+# real mode uses /right/gello_js), set ARM_JOINT_STATES_TOPIC below.
 #
 # Prerequisites:
 #   - ROS2 Humble
@@ -38,6 +78,25 @@ PATTERN="rosbag2_2026_01_18*"
 REPO_ID="tidyverse_hand_2026_01_18"
 FPS=30
 TASK="hand teleop demonstration"
+
+# -----------------------------------------------------------------------------
+# Topic names (must match what was recorded)
+# Run: ./01_inspect_rosbag.sh /path/to/one/rosbag  to list topics in your bags.
+# With yam_gello_controller, arm commands are on /joint_states (same as below).
+# Expected:
+#   - Arm:   JointState on /joint_states (or /right/gello_js in real gello mode)
+#   - Hand:  JointControl /right/joint_control, ActuatorStates /right/actuator_states
+#   - Base:  Twist /spacemouse/cmd_vel   Glove: ManusGlove /manus_glove_0
+# -----------------------------------------------------------------------------
+TOPIC_CMD_VEL="/spacemouse/cmd_vel"
+TOPIC_JOINT_STATES="/joint_states"
+TOPIC_HAND_CONTROL="/right/joint_control"
+TOPIC_ACTUATOR_STATES="/right/actuator_states"
+TOPIC_MANUS="/manus_glove_0"
+# Arm joint states: use this if arm is on a different topic (e.g. /right/gello_js). Else leave empty.
+ARM_JOINT_STATES_TOPIC=""
+# Arm joint names (gello: joint1..joint6; we use 7 dims, 7th can be 0). Leave empty for default.
+ARM_JOINT_NAMES="joint1,joint2,joint3,joint4,joint5,joint6,joint7"
 
 # HuggingFace configuration
 HF_REPO_ID="dragonx/tidyverse_hand_2026_01_18"  # Change to your HF username/repo
@@ -372,16 +431,23 @@ for i in "${!MATCHING_BAGS[@]}"; do
         --task "$TASK"
         --image-h 480
         --image-w 640
-        --topic-cmd-vel "/spacemouse/cmd_vel"
-        --topic-joint-states "/joint_states"
-        --topic-hand-control "/right/joint_control"
-        --topic-actuator-states "/right/actuator_states"
-        --topic-manus "/manus_glove_0"
-        --arm-joint-dim 7
-        --hand-joint-dim 16
-        --num-actuators 7
-        --manus-dim 20
+        --topic-cmd-vel "$TOPIC_CMD_VEL"
+        --topic-joint-states "$TOPIC_JOINT_STATES"
+        --topic-hand-control "$TOPIC_HAND_CONTROL"
+        --topic-actuator-states "$TOPIC_ACTUATOR_STATES"
+        --topic-manus "$TOPIC_MANUS"
+        --arm-joint-dim 7       # state[0:7] & action[3:10]  joint1..joint7
+        --hand-joint-dim 16    # action[10:26]  finger DOFs from JointControl
+        --num-actuators 7      # state[7:14]   actuator feedback
+        --manus-dim 20         # state[14:34]  manus glove ergonomics
     )
+    
+    if [[ -n "$ARM_JOINT_NAMES" ]]; then
+        CMD+=(--arm-joint-names "$ARM_JOINT_NAMES")
+    fi
+    if [[ -n "$ARM_JOINT_STATES_TOPIC" ]]; then
+        CMD+=(--topic-arm-joint-states "$ARM_JOINT_STATES_TOPIC")
+    fi
     
     # First bag: overwrite; subsequent bags: append (auto-detects indices)
     if [[ $i -eq 0 ]]; then

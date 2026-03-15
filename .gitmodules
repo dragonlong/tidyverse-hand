@@ -7,3 +7,10 @@
 [submodule "third_party/InternVLA-M1"]
 	path = third_party/InternVLA-M1
 	url = https://github.com/dragonlong/InternVLA-M1.git
+[submodule "tools/framework"]
+	path = tools/framework
+	url = https://github.com/dw218192/repokit.git
+	branch = release
+[submodule "third_party/Isaac-GR00T"]
+	path = third_party/Isaac-GR00T
+	url = https://github.com/dragonlong/Isaac-GR00T.git

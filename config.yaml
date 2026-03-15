@@ -1,0 +1,33 @@
+# ── Repo section ──────────────────────────────────────────────────────
+# repo:
+#   tokens:
+#     my_token: "value"           # custom token usable as {my_token}
+#   extra_deps:
+#     - "requests>=2.0"           # additional pip dependencies
+#   features:
+#     - python                    # enable feature groups (python, cpp, ...)
+
+# ── Build / Test / Format ─────────────────────────────────────────────
+# test:
+#   steps:
+#     - run: "{repo} python -m pytest tests/"
+
+# build:
+#   steps:
+#     - run: "echo build step here"
+
+# format:
+#   paths:
+#     - "src/"
+#     - "tests/"
+
+# ── Agent section ─────────────────────────────────────────────────────
+# agent:
+#   backend: sdk                  # sdk or cli
+#   human_ticket_review: true          # require user approval before creating tickets
+#   prompts:
+#     system: "prompts/system.md"
+#   required_criteria:
+#     - "All existing tests still pass"
+#   allowlist:
+#     - "pytest"

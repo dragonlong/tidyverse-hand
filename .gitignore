@@ -5,3 +5,10 @@ __pycache__
 *.swp
 data/
 
+
+# repokit
+repo
+repo.cmd
+repo.ps1
+_agent/
+config.local.yaml

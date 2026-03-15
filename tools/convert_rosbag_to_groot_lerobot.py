@@ -758,10 +758,11 @@ def create_modality_json(
             "original_key": f"observation.images.{cam_name}"
         }
     
-    # Annotation fields
+    # Annotation fields — keys must NOT include the "annotation." prefix
+    # (the GR00T loader strips it before looking up in modality.json)
     annotation_fields = {
-        "annotation.human.action.task_description": {},
-        "annotation.human.validity": {},
+        "human.action.task_description": {},
+        "human.validity": {},
     }
     
     return {
@@ -807,6 +808,7 @@ def create_info_json(
                     "has_audio": False,
                 },
             }
+    chunks_size = 1000  # standard LeRobot v2 chunk size
     return {
         "codebase_version": "v2.0",
         "robot_type": robot_type,
@@ -814,6 +816,8 @@ def create_info_json(
         "total_episodes": total_episodes,
         "total_frames": total_frames,
         "total_videos": total_episodes * (len(camera_names) if camera_names else 0),
+        "chunks_size": chunks_size,
+        "total_chunks": max(1, -(-total_episodes // chunks_size)),  # ceiling division
         "data_path": "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet",
         "video_path": "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4",
         "features": features,

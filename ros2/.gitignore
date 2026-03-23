@@ -1,0 +1,8 @@
+## build files
+build/
+install/
+log/
+
+## VSCode
+.vscode/
+__pycache__/

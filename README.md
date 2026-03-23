@@ -7,6 +7,18 @@ The goal is to enable robots with multi-finger hands and a mobile base to perfor
   <img src="static/assets/example1.jpg" width="80%">
 </p>
 
+## Demos
+
+### Shoes arrangement in the garage
+
+<p align="center">
+  <video src="static/assets/shoes_arrangement_garage.mp4" controls width="80%"></video>
+</p>
+
+### Slides
+
+[TidyVerse Project Slides](https://docs.google.com/presentation/d/1R_DfAqw_C3YW7VPrh1crhGFvS28RbNxURN68d7ljS0Y/edit?usp=sharing)
+
 ## Overview
 
 TidyVerse focuses on three key challenges:

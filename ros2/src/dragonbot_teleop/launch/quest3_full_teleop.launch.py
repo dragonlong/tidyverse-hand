@@ -39,7 +39,7 @@ def generate_launch_description():
     )
 
     quest3_retargeting = Node(
-        package="aero_hand_open_teleop",
+        package="dragonbot_teleop",
         executable="quest3_retargeting",
         name="quest3_retargeting",
         output="screen",

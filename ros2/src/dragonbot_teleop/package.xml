@@ -1,15 +1,16 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>yam_teleop</name>
+  <name>dragonbot_teleop</name>
   <version>0.0.0</version>
-  <description>Quest 3 wrist pose to YAM arm IK teleoperation</description>
+  <description>Dragonbot teleoperation: base (SpaceMouse), arm (Quest 3 wrist IK), and hand (Quest 3 retargeting)</description>
   <maintainer email="dev@tetheria.ai">dev</maintainer>
   <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>aero_hand_open_msgs</depend>
   <depend>robot_arms</depend>
 
   <test_depend>ament_copyright</test_depend>

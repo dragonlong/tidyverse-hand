@@ -6,7 +6,7 @@ import os
 from glob import glob
 from setuptools import find_packages, setup
 
-package_name = "yam_teleop"
+package_name = "dragonbot_teleop"
 
 setup(
     name=package_name,
@@ -21,12 +21,17 @@ setup(
     zip_safe=True,
     maintainer="dev",
     maintainer_email="dev@tetheria.ai",
-    description="Quest 3 wrist pose to YAM arm IK teleoperation",
+    description="Dragonbot teleoperation: base (SpaceMouse), arm (Quest 3 wrist IK), and hand (Quest 3 retargeting)",
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "quest3_yam_teleop = yam_teleop.quest3_yam_teleop:main",
+            "quest3_yam_teleop = dragonbot_teleop.quest3_yam_teleop:main",
+            "quest3_retargeting = dragonbot_teleop.quest3_retargeting:main",
+            "spacemouse = dragonbot_teleop.spacemouse:main",
+            "mujoco_dragonbot_viewer = dragonbot_teleop.mujoco_dragonbot_viewer:main",
+            "mujoco_hand_viewer = dragonbot_teleop.mujoco_hand_viewer:main",
+            "mujoco_yam_hand_viewer = dragonbot_teleop.mujoco_yam_hand_viewer:main",
         ],
     },
 )

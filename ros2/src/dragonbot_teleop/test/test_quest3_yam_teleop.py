@@ -32,7 +32,7 @@ from scipy.spatial.transform import Rotation
 
 # Make the package importable without a colcon install.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from yam_teleop.quest3_yam_teleop import Quest3YamTeleop, _se3_compose, _solve_ik
+from dragonbot_teleop.quest3_yam_teleop import Quest3YamTeleop, _se3_compose, _solve_ik
 
 URDF_PATH = "/home/dragonx/tetheria/i2rt/i2rt/robot_models/yam/yam.urdf"
 

@@ -11,6 +11,7 @@ repo
 repo.cmd
 repo.ps1
 _agent/
+_build/
 config.local.yaml
 
 # generated outputs

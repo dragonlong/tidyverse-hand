@@ -73,8 +73,8 @@ We introduce **TidyMimic++**, an intent-level imitation framework that distills 
 
 Example tasks in TidyVerse include:
 - Shoe arrangement and alignment
-- Cloth flattening and folding
-- Room-scale cleanup with navigation and manipulation
+- Cloth flattening and folding *(TBD)*
+- Room-scale cleanup with navigation and manipulation *(TBD)*
 
 ## Progress & Roadmap — v0.2 Pre-release
 

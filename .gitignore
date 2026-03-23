@@ -12,3 +12,10 @@ repo.cmd
 repo.ps1
 _agent/
 config.local.yaml
+
+# generated outputs
+tools/batch_convert.log
+tools/lerobot_single_episode.zip
+tools/lerobot_single_episode/
+tools/test_lerobot_output/
+tools/plots_arm_action_state/

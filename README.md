@@ -12,7 +12,9 @@ The goal is to enable robots with multi-finger hands and a mobile base to perfor
 ### Shoes arrangement in the garage
 
 <p align="center">
-  <video src="https://github.com/dragonlong/tidyverse-hand/raw/main/static/assets/shoes_arrangement_garage.mp4" controls width="80%"></video>
+  <video src="https://github.com/dragonlong/tidyverse-hand/raw/main/static/assets/shoes_arrangement_garage.mp4"
+         poster="https://github.com/dragonlong/tidyverse-hand/raw/main/static/assets/shoes_arrangement_garage_thumb.jpg"
+         controls width="80%"></video>
 </p>
 
 ### Slides
